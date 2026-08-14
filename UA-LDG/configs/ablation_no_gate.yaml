@@ -1,0 +1,20 @@
+# =============================================================================
+#  configs/ablation_no_gate.yaml
+#  Ablation C: UA-GCN without uncertainty-conditioned attention gate.
+#
+#  Keeps Beta-Binomial edge weights (with posterior variance) but removes
+#  the gate that uses variance to suppress unreliable edges.
+#  Isolates: does the variance-conditioned attention gate specifically
+#  improve over Beta-Binomial edges alone?
+#
+#  Merge order:  default.yaml → bridges2.yaml → this file
+# =============================================================================
+
+model:
+  use_attention_gate: false
+
+training:
+  save_dir: outputs/ablations/no_gate/checkpoints
+
+logging:
+  log_dir: outputs/ablations/no_gate/logs

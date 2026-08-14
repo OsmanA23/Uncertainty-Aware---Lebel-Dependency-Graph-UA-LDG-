@@ -1,0 +1,61 @@
+# =============================================================================
+#  configs/bridges2.yaml
+#  Bridges-2 (PSC) specific configuration overrides.
+#
+#  Usage — merge on top of default.yaml:
+#    python scripts/train.py \
+#        --config configs/default.yaml \
+#        --config configs/bridges2.yaml
+#
+#  Before running:
+#    1. Confirm the Bridges-2 data paths below are correct for /ocean/projects/cis250046p/oali2.
+#    2. SLURM scripts already use account cis250046p.
+# =============================================================================
+
+# ── Storage paths ─────────────────────────────────────────────────────────────
+data:
+  data_root: /ocean/projects/cis250046p/oali2/DeepLearningProject/Dataset/new_pipeline/mimic_jpg/mimic-cxr-jpg
+  processed_root: /ocean/projects/cis250046p/oali2/DeepLearningProject/XrayGNN/data/processed
+  splits_root: /ocean/projects/cis250046p/oali2/DeepLearningProject/XrayGNN/data/splits
+  num_workers: 10                        # match --cpus-per-task in SLURM scripts
+  pin_memory: true
+
+  # MIMIC-CXR-JPG paths on Bridges-2 (PRIMARY DATASET)
+  mimic_cxr:
+    root: /ocean/projects/cis250046p/oali2/DeepLearningProject/Dataset/new_pipeline/mimic_jpg/mimic-cxr-jpg/2.1.0
+    image_dir: /ocean/projects/cis250046p/oali2/DeepLearningProject/Dataset/new_pipeline/mimic_jpg/mimic-cxr-jpg/2.1.0/files
+    split_csv: /ocean/projects/cis250046p/oali2/DeepLearningProject/Dataset/new_pipeline/mimic_jpg/mimic-cxr-2.0.0-split.csv.gz
+    label_csv: /ocean/projects/cis250046p/oali2/DeepLearningProject/Dataset/new_pipeline/mimic_jpg/mimic-cxr-2.0.0-chexpert.csv.gz
+    metadata_csv: /ocean/projects/cis250046p/oali2/DeepLearningProject/Dataset/new_pipeline/mimic_jpg/mimic-cxr-2.0.0-metadata.csv.gz
+    uncertain_policy: ignore
+    frontal_only: true
+    validate_images: true
+
+  # Optional: NIH ChestX-ray14 (for cross-dataset evaluation only)
+  chestxray14:
+    image_dir: /ocean/projects/cis250046p/oali2/ua_ldg_data/raw/chestxray14/images
+    label_file: /ocean/projects/cis250046p/oali2/ua_ldg_data/raw/chestxray14/Data_Entry_2017.csv
+    train_val_list: /ocean/projects/cis250046p/oali2/ua_ldg_data/raw/chestxray14/train_val_list.txt
+    test_list: /ocean/projects/cis250046p/oali2/ua_ldg_data/raw/chestxray14/test_list.txt
+
+model:
+  label_embed_path: /ocean/projects/cis250046p/oali2/DeepLearningProject/XrayGNN/data/processed/biowordvec_200d.bin
+
+# ── Training: tuned for V100 32 GB ────────────────────────────────────────────
+training:
+  batch_size: 64                         # H100 80 GB fits bs=64 comfortably
+  epochs: 35
+  save_dir: outputs/checkpoints
+
+# ── Hardware ──────────────────────────────────────────────────────────────────
+hardware:
+  device: cuda
+  num_gpus: 2                            # match --gres=gpu:v100-32:2 in SLURM
+  mixed_precision: true                  # always use fp16 on V100 / H100
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging:
+  log_dir: outputs/logs
+  use_tensorboard: true
+  use_wandb: false                       # W&B often blocked by HPC firewalls
+  log_every: 100

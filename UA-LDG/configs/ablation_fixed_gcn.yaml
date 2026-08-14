@@ -1,0 +1,21 @@
+# =============================================================================
+#  configs/ablation_fixed_gcn.yaml
+#  Ablation B: Fixed co-occurrence GCN — no Beta-Binomial uncertainty.
+#
+#  Edge weights are plain MLE conditional probabilities (n_ij / n_i).
+#  No posterior variance, no stochastic sampling, no attention gate.
+#  Isolates: does Beta-Binomial uncertainty modulation improve over a
+#  standard fixed-weight GCN?
+#
+#  Merge order:  default.yaml → bridges2.yaml → this file
+# =============================================================================
+
+model:
+  model_variant: fixed_gcn
+  use_attention_gate: false   # no variance signal to condition on
+
+training:
+  save_dir: outputs/ablations/fixed_gcn/checkpoints
+
+logging:
+  log_dir: outputs/ablations/fixed_gcn/logs

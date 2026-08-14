@@ -1,0 +1,19 @@
+# =============================================================================
+#  configs/ablation_densenet_only.yaml
+#  Ablation A: DenseNet-121 backbone only — no graph, no GCN.
+#
+#  Node representations (backbone features + label embeddings) are fed
+#  directly to the EDL head without any message-passing step.
+#  Isolates: does having a graph at all improve over the backbone alone?
+#
+#  Merge order:  default.yaml → bridges2.yaml → this file
+# =============================================================================
+
+model:
+  model_variant: no_graph
+
+training:
+  save_dir: outputs/ablations/densenet_only/checkpoints
+
+logging:
+  log_dir: outputs/ablations/densenet_only/logs
