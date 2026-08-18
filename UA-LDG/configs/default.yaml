@@ -62,7 +62,6 @@ pathologies:
 # ── Model ────────────────────────────────────────────────────────────────────
 model:
   # Visual backbone
-  backbone: densenet121                         # densenet121 | resnet50 | vit_b_16
   backbone_pretrained: true
   backbone_pretrained_source: torchxrayvision   # "imagenet" | "torchxrayvision"
   backbone_freeze_bn: true
@@ -79,7 +78,6 @@ model:
   # Uncertainty-aware GCN
   gcn_layers: 2
   gcn_dropout: 0.3
-  gamma: 5.0                            # uncertainty suppression strength in GCN attention gate
 
   # Attention gate
   use_attention_gate: true
@@ -93,8 +91,7 @@ training:
   batch_size: 32
   lr: 1.0e-4
   weight_decay: 1.0e-4
-  lr_scheduler: plateau                 # plateau | cosine | step
-  lr_patience: 7                        # for plateau scheduler
+  lr_patience: 7                        # ReduceLROnPlateau patience (epochs with no val AUC improvement)
   lr_factor: 0.3
   min_lr: 1.0e-7
   grad_clip: 1.0
@@ -103,11 +100,6 @@ training:
   lambda_edl: 0.05                      # was 0.005 — too small; EDL contributed <0.1% of loss
   asym_gamma_neg: 4                     # Asymmetric loss negative focusing
   asym_gamma_pos: 0
-
-  # Augmentation
-  random_hflip: true
-  random_rotation: 10                   # degrees
-  color_jitter: false
 
   # Checkpointing
   save_dir: outputs/checkpoints
