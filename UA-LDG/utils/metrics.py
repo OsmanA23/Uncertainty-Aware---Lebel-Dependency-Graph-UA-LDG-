@@ -43,11 +43,13 @@ def compute_auc(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     results = {}
     aucs = []
     for i, path in enumerate(PATHOLOGIES):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             results[path] = float("nan")
             continue
         try:
-            auc = roc_auc_score(y_true[:, i], y_pred[:, i])
+            auc = roc_auc_score(col[valid], y_pred[valid, i])
         except Exception:
             auc = float("nan")
         results[path] = auc
@@ -65,11 +67,13 @@ def compute_map(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     results = {}
     aps = []
     for i, path in enumerate(PATHOLOGIES):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             results[path] = float("nan")
             continue
         try:
-            ap = average_precision_score(y_true[:, i], y_pred[:, i])
+            ap = average_precision_score(col[valid], y_pred[valid, i])
         except Exception:
             ap = float("nan")
         results[path] = ap
@@ -89,10 +93,12 @@ def compute_f1(y_true: np.ndarray, y_pred: np.ndarray,
     results = {}
     f1s = []
     for i, path in enumerate(PATHOLOGIES):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             results[path] = float("nan")
             continue
-        f1 = f1_score(y_true[:, i], y_bin[:, i], zero_division=0)
+        f1 = f1_score(col[valid], y_bin[valid, i], zero_division=0)
         results[path] = f1
         f1s.append(f1)
 
@@ -120,8 +126,11 @@ def compute_ece(y_true: np.ndarray, y_pred: np.ndarray,
     Returns:
         ece : scalar float
     """
-    y_true_flat = y_true.flatten()
-    y_pred_flat = y_pred.flatten()
+    flat_true   = y_true.flatten()
+    flat_pred   = y_pred.flatten()
+    valid       = ~np.isnan(flat_true)
+    y_true_flat = flat_true[valid]
+    y_pred_flat = flat_pred[valid]
 
     bin_edges = np.linspace(0.0, 1.0, num_bins + 1)
     ece = 0.0
@@ -163,10 +172,13 @@ def compute_uncertainty_auroc(
     Returns:
         auroc : scalar float
     """
-    y_pred_bin = (y_pred >= 0.5).astype(int)
+    valid        = ~np.isnan(y_true.flatten())
+    y_true_valid = y_true.flatten()[valid]
+    y_pred_valid = y_pred.flatten()[valid]
+    vac_flat     = vacuity.flatten()[valid]
+    y_pred_bin   = (y_pred_valid >= 0.5).astype(int)
     # 1 = wrong prediction, 0 = correct prediction
-    is_wrong   = (y_pred_bin != y_true.astype(int)).flatten().astype(int)
-    vac_flat   = vacuity.flatten()
+    is_wrong     = (y_pred_bin != y_true_valid.astype(int)).astype(int)
 
     if is_wrong.sum() == 0 or is_wrong.sum() == len(is_wrong):
         return float("nan")
@@ -250,12 +262,14 @@ def find_optimal_thresholds(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarra
     candidates = np.arange(0.05, 0.96, 0.01)
     thresholds = np.full(L, 0.3, dtype=np.float32)
     for i in range(L):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             continue
         best_f1, best_t = 0.0, 0.3
         for t in candidates:
-            y_bin = (y_pred[:, i] >= t).astype(int)
-            f1 = f1_score(y_true[:, i], y_bin, zero_division=0)
+            y_bin = (y_pred[valid, i] >= t).astype(int)
+            f1 = f1_score(col[valid], y_bin, zero_division=0)
             if f1 > best_f1:
                 best_f1, best_t = f1, float(t)
         thresholds[i] = best_t
@@ -283,18 +297,22 @@ def compute_bootstrap_ci(
         dict mapping class_name → (mean_auc, lower_bound, upper_bound)
     """
     rng = np.random.RandomState(seed)
-    N = y_true.shape[0]
     alpha = (1.0 - ci) / 2.0
     results = {}
     for i, path in enumerate(PATHOLOGIES):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             results[path] = (float("nan"), float("nan"), float("nan"))
             continue
+        col_v  = col[valid]
+        pred_v = y_pred[valid, i]
+        N_v    = int(valid.sum())
         boot_aucs = []
         for _ in range(n_bootstrap):
-            idx = rng.choice(N, N, replace=True)
-            yt, yp = y_true[idx, i], y_pred[idx, i]
-            if yt.sum() == 0 or yt.sum() == N:
+            idx = rng.choice(N_v, N_v, replace=True)
+            yt, yp = col_v[idx], pred_v[idx]
+            if yt.sum() == 0 or yt.sum() == N_v:
                 continue
             try:
                 boot_aucs.append(roc_auc_score(yt, yp))
@@ -330,17 +348,19 @@ def compute_per_class_precision_recall_f1(
     """
     results = {}
     for i, path in enumerate(PATHOLOGIES):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             results[path] = {
                 "precision": float("nan"), "recall": float("nan"),
                 "f1": float("nan"), "threshold": float(thresholds[i]),
             }
             continue
-        y_bin = (y_pred[:, i] >= thresholds[i]).astype(int)
+        y_bin = (y_pred[valid, i] >= thresholds[i]).astype(int)
         results[path] = {
-            "precision": float(precision_score(y_true[:, i], y_bin, zero_division=0)),
-            "recall":    float(recall_score(y_true[:, i], y_bin, zero_division=0)),
-            "f1":        float(f1_score(y_true[:, i], y_bin, zero_division=0)),
+            "precision": float(precision_score(col[valid], y_bin, zero_division=0)),
+            "recall":    float(recall_score(col[valid], y_bin, zero_division=0)),
+            "f1":        float(f1_score(col[valid], y_bin, zero_division=0)),
             "threshold": float(thresholds[i]),
         }
     return results
@@ -365,7 +385,12 @@ def compute_per_class_ece(
     bin_edges = np.linspace(0.0, 1.0, num_bins + 1)
     results = {}
     for i, path in enumerate(PATHOLOGIES):
-        yt, yp = y_true[:, i], y_pred[:, i]
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0:
+            results[path] = float("nan")
+            continue
+        yt, yp = col[valid], y_pred[valid, i]
         ece, total = 0.0, len(yt)
         for b in range(num_bins):
             mask = (yp >= bin_edges[b]) & (yp < bin_edges[b + 1])
@@ -400,9 +425,13 @@ def compute_per_class_uncertainty(
     """
     results = {}
     for i, path in enumerate(PATHOLOGIES):
-        y_bin = (y_pred[:, i] >= 0.5).astype(int)
-        is_wrong = (y_bin != y_true[:, i].astype(int)).astype(int)
-        vac = vacuity[:, i]
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        yt    = col[valid]
+        yp    = y_pred[valid, i]
+        vac   = vacuity[valid, i]
+        y_bin = (yp >= 0.5).astype(int)
+        is_wrong = (y_bin != yt.astype(int)).astype(int)
         correct_mask = is_wrong == 0
         results[path] = {
             "mean_vacuity_correct":   float(vac[correct_mask].mean())   if correct_mask.sum() > 0  else float("nan"),

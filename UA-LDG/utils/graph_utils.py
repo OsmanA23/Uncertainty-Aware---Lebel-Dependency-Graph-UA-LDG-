@@ -6,18 +6,15 @@ Utilities for building and analysing the disease co-occurrence graph.
 Key functions:
   build_cooccurrence_matrix  : compute n_ij (counts) and p_hat (probs)
   load_or_build_graph_data   : high-level loader used by preprocess.py
-  visualise_edge_confidence  : plot the confidence heatmap for a paper figure
+  visualise_edge_confidence  : plot the edge confidence heatmap
+  visualise_variance_matrix  : plot the posterior variance heatmap (scaled ×10⁴)
 """
 
 import os
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import seaborn as sns
 
-
-from utils.dataset import PATHOLOGIES
 
 SHORT_NAMES = [
     "Atel", "Card", "Cons", "Edem", "EnCM", "Frac",
@@ -29,7 +26,6 @@ SHORT_NAMES = [
 
 def build_cooccurrence_matrix(
     label_matrix: np.ndarray,
-    pathologies: list = None,
     eps: float = 1e-6,
 ) -> tuple:
     """
@@ -37,7 +33,6 @@ def build_cooccurrence_matrix(
 
     Args:
         label_matrix : (N, L)  binary label array
-        pathologies  : list of L pathology names (for reference)
         eps          : small constant to avoid division by zero
 
     Returns:
@@ -45,12 +40,6 @@ def build_cooccurrence_matrix(
         n_i   : (L,)    marginal counts        n_i  = #{samples where i}
         p_hat : (L, L)  conditional probs      p_ij = n_ij / n_i
     """
-    if pathologies is None:
-        pathologies = PATHOLOGIES
-
-    L = len(pathologies)
-    N = label_matrix.shape[0]
-
     n_i   = label_matrix.sum(axis=0)                 # (L,)
     n_ij  = label_matrix.T @ label_matrix            # (L, L)  dot product
 
@@ -62,38 +51,6 @@ def build_cooccurrence_matrix(
     p_hat = np.clip(p_hat, 0.0, 1.0)
 
     return n_ij.astype(np.float32), n_i.astype(np.float32), p_hat.astype(np.float32)
-
-
-# ── Cross-dataset consistency ─────────────────────────────────────────────────
-
-def compute_cross_dataset_probs(
-    datasets: dict,
-    eps: float = 1e-6,
-) -> tuple:
-    """
-    Compute per-dataset conditional probability matrices and derive
-    the cross-dataset consistency score S_cross.
-
-    Args:
-        datasets : dict mapping dataset_name -> (N, L) label_matrix
-
-    Returns:
-        p_hats   : dict mapping dataset_name -> (L, L) p_hat matrix
-        s_cross  : (L, L) cross-dataset consistency score
-    """
-    p_hats = {}
-    for name, labels in datasets.items():
-        _, n_i, p = build_cooccurrence_matrix(labels)
-        p_hats[name] = p
-
-    # Stack into (K, L, L) and compute CoV
-    stack = np.stack(list(p_hats.values()), axis=0)  # (K, L, L)
-    mu    = stack.mean(axis=0) + eps
-    sigma = stack.std(axis=0)
-    cov   = sigma / mu                                # coefficient of variation
-    s_cross = np.clip(1.0 - cov, 1e-6, 1.0)
-
-    return p_hats, s_cross.astype(np.float32)
 
 
 # ── Full graph data loader ────────────────────────────────────────────────────
@@ -189,10 +146,34 @@ def visualise_variance_matrix(
     var_A: np.ndarray,
     save_path: str = None,
 ) -> None:
-    """Plot edge variance matrix (complement of confidence)."""
-    visualise_edge_confidence(
-        var_A,
-        title="Edge Variance Matrix $\\mathrm{Var}[A_{ij}]$",
-        save_path=save_path,
+    """Plot edge variance matrix. Values are scaled by 1e4 for readability."""
+    fig, ax = plt.subplots(figsize=(10, 9))
+    var_scaled = var_A * 1e4
+    vmax = float(np.nanmax(var_scaled)) if np.nanmax(var_scaled) > 0 else 1.0
+    sns.heatmap(
+        var_scaled,
+        ax=ax,
+        xticklabels=SHORT_NAMES,
+        yticklabels=SHORT_NAMES,
         cmap="Blues",
+        vmin=0.0, vmax=vmax,
+        square=True,
+        linewidths=0.4,
+        linecolor="white",
+        annot=True,
+        fmt=".2f",
+        annot_kws={"size": 7},
+        cbar_kws={"label": r"$\mathrm{Var}[A_{ij}]$ ($\times10^{-4}$)"},
     )
+    ax.set_title(r"Edge Variance Matrix $\mathrm{Var}[A_{ij}]$ ($\times10^{-4}$)",
+                 fontsize=13, pad=12)
+    ax.set_xlabel("Target pathology $j$", fontsize=11)
+    ax.set_ylabel("Source pathology $i$", fontsize=11)
+    plt.tight_layout()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"[graph_utils] Saved figure to {save_path}")
+    else:
+        plt.show()
+    plt.close(fig)

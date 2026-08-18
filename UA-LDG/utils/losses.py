@@ -54,6 +54,7 @@ class AsymmetricBCELoss(nn.Module):
         self,
         pred: torch.Tensor,    # (B, L)  predicted probabilities in (0,1)
         target: torch.Tensor,  # (B, L)  binary ground-truth {0,1}
+        mask: torch.Tensor = None,  # (B, L)  1.0 = known, 0.0 = uncertain
     ) -> torch.Tensor:
 
         # Probability shift (clip negative prob away from 1)
@@ -70,6 +71,9 @@ class AsymmetricBCELoss(nn.Module):
         neg_loss = (1 - target) * pred_neg         ** self.gamma_neg * log_p_neg
 
         loss = -(pos_loss + neg_loss)                  # (B, L)
+
+        if mask is not None:
+            return (loss * mask).sum() / mask.sum().clamp(min=1.0)
 
         if self.reduction == "mean":
             return loss.mean()
@@ -106,6 +110,7 @@ class EDLRegularisationLoss(nn.Module):
         alpha: torch.Tensor,      # (B, L)  Beta α from EDL head
         beta: torch.Tensor,       # (B, L)  Beta β from EDL head
         current_epoch: int = 0,
+        mask: torch.Tensor = None,  # (B, L)  1.0 = known, 0.0 = uncertain
     ) -> torch.Tensor:
 
         lam_t = min(1.0, current_epoch / max(self.annealing_epochs, 1))
@@ -117,6 +122,9 @@ class EDLRegularisationLoss(nn.Module):
         beta_t  =       y   * beta  + (1.0 - y) * torch.ones_like(beta)
 
         kl = _kl_beta_uniform(alpha_t, beta_t)     # (B, L)
+
+        if mask is not None:
+            return lam_t * (kl * mask).sum() / mask.sum().clamp(min=1.0)
         return lam_t * kl.mean()
 
 
@@ -173,13 +181,14 @@ class UALDGLoss(nn.Module):
         alpha: torch.Tensor,   # (B, L)
         beta: torch.Tensor,    # (B, L)
         current_epoch: int = 0,
+        mask: torch.Tensor = None,  # (B, L)  1.0 = known, 0.0 = uncertain
     ) -> dict:
         """
         Returns:
             dict with keys: total, cls, edl
         """
-        l_cls = self.cls_loss(p_hat, y)
-        l_edl = self.edl_loss(y, alpha, beta, current_epoch)
+        l_cls = self.cls_loss(p_hat, y, mask=mask)
+        l_edl = self.edl_loss(y, alpha, beta, current_epoch, mask=mask)
         total = l_cls + self.lambda_edl * l_edl
 
         return {

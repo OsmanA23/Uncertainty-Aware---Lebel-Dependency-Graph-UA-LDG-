@@ -105,8 +105,7 @@ class TrainingLogger:
             f"  Epoch {epoch:3d} | Elapsed {elapsed:.1f} min\n"
             f"  Train → total:{train_losses.get('total',0):.4f}  "
             f"cls:{train_losses.get('cls',0):.4f}  "
-            f"edl:{train_losses.get('edl',0):.4f}  "
-            f"conf:{train_losses.get('conf',0):.4f}"
+            f"edl:{train_losses.get('edl',0):.4f}"
         )
         if val_metrics:
             msg += (
@@ -117,15 +116,6 @@ class TrainingLogger:
             )
         msg += f"\n{'─'*60}"
         self.info(msg)
-
-    def log_source_weights(self, weights: dict, step: int) -> None:
-        """Log edge confidence source weights λ."""
-        self.log_scalars("source_weights", weights, step)
-        self.info(
-            f"  λ_stat={weights['lambda_stat']:.3f}  "
-            f"λ_cross={weights['lambda_cross']:.3f}  "
-            f"λ_ont={weights['lambda_ont']:.3f}"
-        )
 
     def close(self) -> None:
         if self.tb_writer:

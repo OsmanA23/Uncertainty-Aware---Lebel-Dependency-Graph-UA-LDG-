@@ -49,6 +49,14 @@ from PIL import Image
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD  = [0.229, 0.224, 0.225]
 
+# ── TorchXRayVision normalisation ─────────────────────────────────────────────
+# TXV applies: output = (2 * (img/255) - 1) * 1024  →  range [-1024, 1024]
+# After ToTensor (÷255 → [0,1]), this equals torchvision Normalize with:
+#   mean = 0.5,  std = 1/2048 ≈ 0.000488
+# Source: xrv.datasets.MIMIC_Dataset.__getitem__: normalize(img, maxval=255)
+TXV_MEAN = [0.5, 0.5, 0.5]
+TXV_STD  = [1 / 2048, 1 / 2048, 1 / 2048]
+
 # ── MIMIC-CXR-JPG native 12-pathology ordering ───────────────────────────────
 # Uses MIMIC-CXR's own CheXpert label names directly.
 # Excludes meta-labels: "No Finding" (no pathology) and "Support Devices".
@@ -116,14 +124,27 @@ FRONTAL_VIEWS = {"PA", "AP"}
 
 # ── Transforms ───────────────────────────────────────────────────────────────
 
-def get_transforms(split: str, image_size: int = 224) -> transforms.Compose:
+def get_transforms(
+    split: str,
+    image_size: int = 224,
+    normalization: str = "imagenet",
+) -> transforms.Compose:
     """
     Returns torchvision transforms for train / val / test splits.
 
     Args:
-        split      : "train" | "val" | "test"
-        image_size : target square size in pixels (default 224)
+        split         : "train" | "val" | "test"
+        image_size    : target square size in pixels (default 224)
+        normalization : "imagenet" | "torchxrayvision"
+                        Use "torchxrayvision" when the backbone was pretrained
+                        with TXV weights; it maps pixel values to [-1024, 1024]
+                        to match what those weights expect.
     """
+    if normalization == "torchxrayvision":
+        mean, std = TXV_MEAN, TXV_STD
+    else:
+        mean, std = IMAGENET_MEAN, IMAGENET_STD
+
     if split == "train":
         return transforms.Compose([
             transforms.Resize((image_size + 32, image_size + 32)),
@@ -131,13 +152,13 @@ def get_transforms(split: str, image_size: int = 224) -> transforms.Compose:
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=10),
             transforms.ToTensor(),
-            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+            transforms.Normalize(mean, std),
         ])
     else:
         return transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
-            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+            transforms.Normalize(mean, std),
         ])
 
 
@@ -243,6 +264,7 @@ class MIMICCXRDataset(Dataset):
         transform=None,
         image_size: int = 224,
         validate_images: bool = False,
+        normalization: str = "imagenet",
     ) -> None:
         assert split in ("train", "val", "test"), \
             f"split must be 'train', 'val', or 'test', got '{split}'"
@@ -252,7 +274,7 @@ class MIMICCXRDataset(Dataset):
         self.mimic_root       = mimic_root
         self.split            = split
         self.uncertain_policy = uncertain_policy
-        self.transform        = transform or get_transforms(split, image_size)
+        self.transform        = transform or get_transforms(split, image_size, normalization)
 
         # ── Resolve default CSV paths ──────────────────────────────────────
         def _find_csv(explicit, *candidates):
@@ -481,10 +503,11 @@ class ChestXray14Dataset(Dataset):
         image_size: int = 224,
         val_fraction: float = 0.1,
         seed: int = 42,
+        normalization: str = "imagenet",
     ) -> None:
         self.image_dir = image_dir
         self.split     = split
-        self.transform = transform or get_transforms(split, image_size)
+        self.transform = transform or get_transforms(split, image_size, normalization)
 
         df = pd.read_csv(label_file)
         df = df[["Image Index", "Finding Labels"]].copy()
@@ -558,11 +581,12 @@ class CheXpertDataset(Dataset):
         uncertain_policy: str = "negative",
         transform=None,
         image_size: int = 224,
+        normalization: str = "imagenet",
     ) -> None:
         self.data_root        = data_root
         self.split            = split
         self.uncertain_policy = uncertain_policy
-        self.transform        = transform or get_transforms(split, image_size)
+        self.transform        = transform or get_transforms(split, image_size, normalization)
 
         df = pd.read_csv(csv_file)
 

@@ -68,11 +68,13 @@ def plot_roc_curves(
     interp_tprs = []
 
     for i, (path, color) in enumerate(zip(PATHOLOGIES, COLORS)):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             continue
         try:
-            fpr, tpr, _ = roc_curve(y_true[:, i], y_pred[:, i])
-            auc = roc_auc_score(y_true[:, i], y_pred[:, i])
+            fpr, tpr, _ = roc_curve(col[valid], y_pred[valid, i])
+            auc = roc_auc_score(col[valid], y_pred[valid, i])
         except Exception:
             continue
         ax.plot(fpr, tpr, color=color, lw=1.3, alpha=0.85,
@@ -82,11 +84,15 @@ def plot_roc_curves(
     if interp_tprs:
         mean_tpr = np.mean(interp_tprs, axis=0)
         mean_tpr[[0, -1]] = [0.0, 1.0]
-        valid_aucs = [
-            roc_auc_score(y_true[:, i], y_pred[:, i])
-            for i in range(len(PATHOLOGIES))
-            if y_true[:, i].sum() > 0
-        ]
+        valid_aucs = []
+        for i in range(len(PATHOLOGIES)):
+            col   = y_true[:, i]
+            valid = ~np.isnan(col)
+            if valid.sum() > 0 and col[valid].sum() > 0:
+                try:
+                    valid_aucs.append(roc_auc_score(col[valid], y_pred[valid, i]))
+                except Exception:
+                    pass
         macro_auc = float(np.mean(valid_aucs))
         ax.plot(mean_fpr, mean_tpr, color="black", lw=2.5, ls="--",
                 label=f"Macro avg ({macro_auc:.3f})")
@@ -122,11 +128,13 @@ def plot_pr_curves(
     fig, ax = plt.subplots(figsize=(9, 8))
 
     for i, (path, color) in enumerate(zip(PATHOLOGIES, COLORS)):
-        if y_true[:, i].sum() == 0:
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        if valid.sum() == 0 or col[valid].sum() == 0:
             continue
         try:
-            prec, rec, _ = precision_recall_curve(y_true[:, i], y_pred[:, i])
-            ap = average_precision_score(y_true[:, i], y_pred[:, i])
+            prec, rec, _ = precision_recall_curve(col[valid], y_pred[valid, i])
+            ap = average_precision_score(col[valid], y_pred[valid, i])
         except Exception:
             continue
         ax.plot(rec, prec, color=color, lw=1.3, alpha=0.85,
@@ -170,7 +178,9 @@ def plot_calibration_diagram(
     bin_edges = np.linspace(0.0, 1.0, num_bins + 1)
 
     for i, (path, ax) in enumerate(zip(PATHOLOGIES, axes)):
-        yt, yp = y_true[:, i], y_pred[:, i]
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        yt, yp = col[valid], y_pred[valid, i]
         bin_conf, bin_acc, bin_w = [], [], []
         for b in range(num_bins):
             mask = (yp >= bin_edges[b]) & (yp < bin_edges[b + 1])
@@ -398,10 +408,15 @@ def plot_vacuity_analysis(
     data_correct, data_wrong, labels = [], [], []
 
     for i, path in enumerate(PATHOLOGIES):
-        y_bin = (y_pred[:, i] >= 0.5).astype(int)
-        is_correct = (y_bin == y_true[:, i].astype(int))
-        vc = vacuity[is_correct,  i]
-        vw = vacuity[~is_correct, i]
+        col   = y_true[:, i]
+        valid = ~np.isnan(col)
+        yt    = col[valid]
+        yp    = y_pred[valid, i]
+        vac_v = vacuity[valid, i]
+        y_bin = (yp >= 0.5).astype(int)
+        is_correct = (y_bin == yt.astype(int))
+        vc = vac_v[is_correct]
+        vw = vac_v[~is_correct]
         if len(vc) > 1 and len(vw) > 1:
             data_correct.append(vc)
             data_wrong.append(vw)
