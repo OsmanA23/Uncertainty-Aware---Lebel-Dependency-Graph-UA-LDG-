@@ -104,8 +104,8 @@ class TestForwardPass:
         images, _ = dummy_batch
         with torch.no_grad():
             out = model(images)
-        assert (out["alpha"] > 0).all()
-        assert (out["beta"]  > 0).all()
+        assert (out["alpha"] >= 1).all()
+        assert (out["beta"]  >= 1).all()
 
     def test_var_A_shape(self, model, dummy_batch):
         images, _ = dummy_batch
