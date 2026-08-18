@@ -27,8 +27,8 @@ import torch.nn.functional as F
 
 class GCNLayer(nn.Module):
     """
-    Standard graph convolutional layer:
-        H' = σ( Â · H · W )
+    Standard graph convolutional layer with residual connection:
+        H' = σ( Â · H · W + H )
 
     Args:
         in_dim  (int) : Input node feature dimension.

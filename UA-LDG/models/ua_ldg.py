@@ -16,7 +16,6 @@ Forward output : dict with p_hat, u, alpha, beta, var_A, gates, edge_stats
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .backbone import CXRBackbone
 from .edge_confidence import BetaBinomialEdgeWeights, FixedEdgeWeights
@@ -37,7 +36,6 @@ class UALDG(nn.Module):
         image_embed_dim    (int)         : 1024 for DenseNet-121.
         label_embed_dim    (int)         : 200 for BioWordVec.
         node_hidden_dim    (int)         : d_h = 512.
-        gamma              (float)       : Uncertainty suppression strength.
         gcn_layers         (int)         : Number of GCN layers.
         gcn_dropout        (float)       : GCN dropout rate.
         use_att_gate       (bool)        : Whether to use attention gate.
@@ -61,7 +59,6 @@ class UALDG(nn.Module):
         image_embed_dim: int = 1024,
         label_embed_dim: int = 200,
         node_hidden_dim: int = 512,
-        gamma: float = 5.0,
         gcn_layers: int = 2,
         gcn_dropout: float = 0.3,
         use_att_gate: bool = True,
