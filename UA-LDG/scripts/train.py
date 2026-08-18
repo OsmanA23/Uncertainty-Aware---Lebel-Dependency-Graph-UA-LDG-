@@ -103,6 +103,7 @@ def build_datasets(cfg, logger):
         validate_images = mc.get("validate_images", False)
         logger.info(f"[train] validate_images = {validate_images}")
 
+        norm = cfg.model.backbone_pretrained_source
         train_dataset = MIMICCXRDataset(
             mimic_root       = mc.root,
             split            = "train",
@@ -113,6 +114,7 @@ def build_datasets(cfg, logger):
             frontal_only     = mc.frontal_only,
             image_size       = cfg.data.image_size,
             validate_images  = validate_images,
+            normalization    = norm,
         )
         val_dataset = MIMICCXRDataset(
             mimic_root       = mc.root,
@@ -124,6 +126,7 @@ def build_datasets(cfg, logger):
             frontal_only     = mc.frontal_only,
             image_size       = cfg.data.image_size,
             validate_images  = mc.get("validate_images", False),
+            normalization    = norm,
         )
         test_dataset = MIMICCXRDataset(
             mimic_root       = mc.root,
@@ -135,40 +138,47 @@ def build_datasets(cfg, logger):
             frontal_only     = mc.frontal_only,
             image_size       = cfg.data.image_size,
             validate_images  = mc.get("validate_images", False),
+            normalization    = norm,
         )
 
     elif primary == "chestxray14":
-        cx = cfg.data.chestxray14
+        cx   = cfg.data.chestxray14
+        norm = cfg.model.backbone_pretrained_source
         train_dataset = ChestXray14Dataset(
-            image_dir  = cx.image_dir,
-            label_file = cx.label_file,
-            split_file = cx.train_val_list,
-            split      = "train",
-            image_size = cfg.data.image_size,
+            image_dir     = cx.image_dir,
+            label_file    = cx.label_file,
+            split_file    = cx.train_val_list,
+            split         = "train",
+            image_size    = cfg.data.image_size,
+            normalization = norm,
         )
         val_dataset = ChestXray14Dataset(
-            image_dir  = cx.image_dir,
-            label_file = cx.label_file,
-            split_file = cx.train_val_list,
-            split      = "val",
-            image_size = cfg.data.image_size,
+            image_dir     = cx.image_dir,
+            label_file    = cx.label_file,
+            split_file    = cx.train_val_list,
+            split         = "val",
+            image_size    = cfg.data.image_size,
+            normalization = norm,
         )
         test_dataset = ChestXray14Dataset(
-            image_dir  = cx.image_dir,
-            label_file = cx.label_file,
-            split_file = cx.test_list,
-            split      = "test",
-            image_size = cfg.data.image_size,
+            image_dir     = cx.image_dir,
+            label_file    = cx.label_file,
+            split_file    = cx.test_list,
+            split         = "test",
+            image_size    = cfg.data.image_size,
+            normalization = norm,
         )
 
     elif primary == "chexpert":
-        cp = cfg.data.chexpert
+        cp   = cfg.data.chexpert
+        norm = cfg.model.backbone_pretrained_source
         train_dataset = CheXpertDataset(
             csv_file         = cp.train_csv,
             data_root        = cp.image_dir,
             split            = "train",
             uncertain_policy = "negative",
             image_size       = cfg.data.image_size,
+            normalization    = norm,
         )
         val_dataset = CheXpertDataset(
             csv_file         = cp.valid_csv,
@@ -176,6 +186,7 @@ def build_datasets(cfg, logger):
             split            = "val",
             uncertain_policy = "negative",
             image_size       = cfg.data.image_size,
+            normalization    = norm,
         )
         test_dataset = val_dataset   # CheXpert has no public test labels
 
@@ -203,6 +214,7 @@ def train_one_epoch(
     for step, (images, labels, _) in enumerate(pbar):
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
+        mask   = (labels >= 0).float()
         labels = labels.clamp(0.0, 1.0)
 
         optimiser.zero_grad()
@@ -215,6 +227,7 @@ def train_one_epoch(
                 alpha         = out["alpha"],
                 beta          = out["beta"],
                 current_epoch = epoch,
+                mask          = mask,
             )
 
         if scaler is not None:
@@ -260,8 +273,8 @@ def validate(model, loader, device):
     y_pred  = np.concatenate(all_preds,   axis=0)
     vacuity = np.concatenate(all_vacuity, axis=0)
 
-    # Clamp labels for metric computation (remove -1 sentinels)
-    y_true = y_true.clip(0, 1)
+    y_true = y_true.astype(float)
+    y_true[y_true < 0] = np.nan
     return compute_all_metrics(y_true, y_pred, vacuity=vacuity)
 
 
@@ -272,7 +285,7 @@ def collect_predictions(model, loader, device):
     Used for the final evaluation only (threshold tuning + full metrics).
 
     Returns:
-        y_true   : (N, L) ground-truth labels clipped to [0, 1]
+        y_true   : (N, L) ground-truth labels with uncertain (-1.0) converted to NaN
         y_pred   : (N, L) predicted probabilities
         vacuity  : (N, L) EDL vacuity scores
     """
@@ -284,7 +297,8 @@ def collect_predictions(model, loader, device):
         all_labels.append(labels.cpu().numpy())
         all_preds.append(out["p_hat"].cpu().numpy())
         all_vacuity.append(out["u"].cpu().numpy())
-    y_true  = np.concatenate(all_labels,  axis=0).clip(0, 1)
+    y_true  = np.concatenate(all_labels,  axis=0).astype(float)
+    y_true[y_true < 0] = np.nan
     y_pred  = np.concatenate(all_preds,   axis=0)
     vacuity = np.concatenate(all_vacuity, axis=0)
     return y_true, y_pred, vacuity
@@ -381,7 +395,6 @@ def main():
         image_embed_dim            = cfg.model.image_embed_dim,
         label_embed_dim            = cfg.model.label_embed_dim,
         node_hidden_dim            = cfg.model.node_hidden_dim,
-        gamma                      = cfg.model.gamma,
         gcn_layers                 = cfg.model.gcn_layers,
         gcn_dropout                = cfg.model.gcn_dropout,
         use_att_gate               = cfg.model.use_attention_gate,

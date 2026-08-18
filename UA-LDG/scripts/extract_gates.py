@@ -72,7 +72,6 @@ def build_model(cfg, n_ij, n_i, graph_mask, label_emb) -> UALDG:
         image_embed_dim           = mc.image_embed_dim,
         label_embed_dim           = mc.label_embed_dim,
         node_hidden_dim           = mc.node_hidden_dim,
-        gamma                     = mc.gamma,
         gcn_layers                = mc.gcn_layers,
         gcn_dropout               = mc.gcn_dropout,
         use_att_gate              = mc.use_attention_gate,
@@ -121,6 +120,7 @@ def main():
         frontal_only     = mc.frontal_only,
         image_size       = cfg.data.image_size,
         validate_images  = False,
+        normalization    = cfg.model.backbone_pretrained_source,
     )
     loader = build_dataloader(test_ds, "test",
                               batch_size     = 64,
